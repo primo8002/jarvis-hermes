@@ -1,8 +1,9 @@
 import express from 'express';
 import http from 'http';
 import { WebSocketServer } from 'ws';
-import { spawn } from 'child_process';
+import { spawn, execFile } from 'child_process';
 import os from 'os';
+import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import si from 'systeminformation';
@@ -21,6 +22,146 @@ app.use(express.json({ limit: '2mb' }));
 app.get('/api/health', async (_req, res) => {
   res.json({ ok: true, name: 'Jarvis', root: ROOT, permissionMode, model: model || 'claude default', port: PORT });
 });
+
+
+const CLAUDE_HOME = process.env.CLAUDE_HOME || path.join(os.homedir(), '.claude');
+const CLAUDE_PROJECTS_DIR = path.join(CLAUDE_HOME, 'projects');
+const USAGE_CACHE_MS = Number(process.env.JARVIS_USAGE_CACHE_MS || 3000);
+let usageCache = { at: 0, data: null };
+let usageCliCache = { at: 0, text: '' };
+
+function emptyTokenBucket() {
+  return { input: 0, output: 0, cacheCreation: 0, cacheRead: 0, total: 0, messages: 0, estimatedCostUsd: 0 };
+}
+
+function addUsage(target, usage, model) {
+  const input = usage.input_tokens || 0;
+  const output = usage.output_tokens || 0;
+  const cacheCreation = usage.cache_creation_input_tokens || 0;
+  const cacheRead = usage.cache_read_input_tokens || 0;
+  target.input += input;
+  target.output += output;
+  target.cacheCreation += cacheCreation;
+  target.cacheRead += cacheRead;
+  target.total += input + output + cacheCreation + cacheRead;
+  target.messages += 1;
+  target.estimatedCostUsd += estimateClaudeCost(model, { input, output, cacheCreation, cacheRead });
+}
+
+function estimateClaudeCost(model = '', usage) {
+  const m = String(model).toLowerCase();
+  let inputPerM = 3, outputPerM = 15;
+  if (m.includes('opus')) { inputPerM = 15; outputPerM = 75; }
+  else if (m.includes('haiku')) { inputPerM = 0.8; outputPerM = 4; }
+  else if (m.includes('sonnet')) { inputPerM = 3; outputPerM = 15; }
+  const cacheWritePerM = inputPerM * 1.25;
+  const cacheReadPerM = inputPerM * 0.1;
+  return ((usage.input * inputPerM) + (usage.output * outputPerM) + (usage.cacheCreation * cacheWritePerM) + (usage.cacheRead * cacheReadPerM)) / 1_000_000;
+}
+
+function dayKey(date) {
+  return new Date(date).toLocaleDateString('en-CA');
+}
+
+async function walkJsonlFiles(dir) {
+  const out = [];
+  async function walk(current) {
+    let entries = [];
+    try { entries = await fs.readdir(current, { withFileTypes: true }); } catch { return; }
+    await Promise.all(entries.map(async (entry) => {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) return walk(full);
+      if (entry.isFile() && entry.name.endsWith('.jsonl')) out.push(full);
+    }));
+  }
+  await walk(dir);
+  return out;
+}
+
+async function runClaudeUsageCommand() {
+  if (Date.now() - usageCliCache.at < 60_000) return usageCliCache.text;
+  const text = await new Promise((resolve) => {
+    execFile('bash', ['-lc', 'claude /usage < /dev/null'], { timeout: 7000, cwd: ROOT }, (error, stdout, stderr) => {
+      const raw = String(stdout || stderr || error?.message || 'Claude /usage unavailable');
+      resolve(raw.split(/\r?\n/).filter(line => !line.startsWith('Warning: no stdin data received')).join('\n').trim());
+    });
+  });
+  usageCliCache = { at: Date.now(), text };
+  return text;
+}
+
+async function collectClaudeUsage() {
+  if (usageCache.data && Date.now() - usageCache.at < USAGE_CACHE_MS) return usageCache.data;
+  const now = new Date();
+  const today = dayKey(now);
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const totals = emptyTokenBucket();
+  const todayTotals = emptyTokenBucket();
+  const weekTotals = emptyTokenBucket();
+  const monthTotals = emptyTokenBucket();
+  const byModel = {};
+  const byDay = {};
+  const recent = [];
+  const seenMessageIds = new Set();
+  let filesScanned = 0;
+  let lastActivity = null;
+
+  const files = await walkJsonlFiles(CLAUDE_PROJECTS_DIR);
+  filesScanned = files.length;
+  await Promise.all(files.map(async (file) => {
+    let content = '';
+    try { content = await fs.readFile(file, 'utf8'); } catch { return; }
+    for (const line of content.split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      let row;
+      try { row = JSON.parse(line); } catch { continue; }
+      const msg = row.message;
+      const usage = msg?.usage;
+      const modelName = msg?.model || row.model || 'unknown';
+      if (!usage || row.type !== 'assistant' || modelName === '<synthetic>') continue;
+      const messageId = msg.id || row.uuid;
+      if (messageId && seenMessageIds.has(messageId)) continue;
+      if (messageId) seenMessageIds.add(messageId);
+      const ts = row.timestamp ? new Date(row.timestamp) : null;
+      const tsMs = ts?.getTime?.() || 0;
+      if (tsMs && (!lastActivity || tsMs > new Date(lastActivity).getTime())) lastActivity = ts.toISOString();
+
+      addUsage(totals, usage, modelName);
+      if (!byModel[modelName]) byModel[modelName] = emptyTokenBucket();
+      addUsage(byModel[modelName], usage, modelName);
+      if (ts) {
+        const key = dayKey(ts);
+        if (!byDay[key]) byDay[key] = emptyTokenBucket();
+        addUsage(byDay[key], usage, modelName);
+        if (key === today) addUsage(todayTotals, usage, modelName);
+        if (tsMs >= sevenDaysAgo) addUsage(weekTotals, usage, modelName);
+        if (tsMs >= thirtyDaysAgo) addUsage(monthTotals, usage, modelName);
+        recent.push({ at: ts.toISOString(), model: modelName, tokens: (usage.input_tokens || 0) + (usage.output_tokens || 0) + (usage.cache_creation_input_tokens || 0) + (usage.cache_read_input_tokens || 0), output: usage.output_tokens || 0 });
+      }
+    }
+  }));
+
+  const cliText = await runClaudeUsageCommand();
+  const data = {
+    ok: true,
+    source: 'Claude CLI /usage + ~/.claude/projects JSONL transcript telemetry',
+    refreshedAt: now.toISOString(),
+    cliText,
+    lastActivity,
+    filesScanned,
+    totals,
+    today: todayTotals,
+    week: weekTotals,
+    month: monthTotals,
+    byModel: Object.entries(byModel).sort((a, b) => b[1].total - a[1].total).slice(0, 8).map(([model, data]) => ({ model, ...data })),
+    byDay: Object.entries(byDay).sort(([a], [b]) => a.localeCompare(b)).slice(-14).map(([day, data]) => ({ day, ...data })),
+    recent: recent.sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 8),
+    note: 'Token/cost numbers are local estimates from Claude Code transcript usage fields; subscription quota/limit text comes from claude /usage when available.'
+  };
+  usageCache = { at: Date.now(), data };
+  return data;
+}
 
 app.get('/api/system', async (_req, res) => {
   try {
@@ -41,6 +182,15 @@ app.get('/api/system', async (_req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: String(error?.message || error) });
+  }
+});
+
+
+app.get('/api/claude-usage', async (_req, res) => {
+  try {
+    res.json(await collectClaudeUsage());
+  } catch (error) {
+    res.status(500).json({ ok: false, error: String(error?.message || error) });
   }
 });
 

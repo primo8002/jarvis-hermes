@@ -10,6 +10,7 @@ Research-informed Jarvis capability set:
 - Live transcript, task log, reasoning/tool ticker, streamed response output.
 - Claude CLI backend with configurable permission mode; default is bypass permissions for the requested all-computer-control mode.
 - System telemetry cards: CPU, memory, disk, battery, OS, process uptime.
+- Realtime Claude usage panel updated every 5 seconds from `claude /usage` plus local `~/.claude/projects/*.jsonl` token telemetry.
 - Local-only Express + WebSocket bridge; no cloud app server.
 - Quick action chips for app control, file work, research, coding, data pulls, calendar/email-style instructions, and web tasks.
 - Barge-in: hit Stop or start a new voice command to interrupt an active Claude process.
@@ -56,6 +57,16 @@ Optional:
 - `JARVIS_CLAUDE_MODEL=sonnet|opus|haiku|<full model>`
 - `JARVIS_MAX_TURNS=20`
 - `JARVIS_OPEN_BROWSER=1`
+- `JARVIS_USAGE_CACHE_MS=3000` — backend cache for the Claude usage scanner
+
+## Claude usage panel
+
+Jarvis shows a live Claude Usage module in the left rail. It refreshes every 5 seconds in the browser and combines:
+
+1. `claude /usage` for the official subscription/usage status text Claude exposes locally.
+2. Local Claude Code transcript files under `~/.claude/projects/**/*.jsonl` for token telemetry, model breakdowns, recent activity, today/7-day/30-day/all-time totals, and estimated dollar cost.
+
+The transcript-derived cost is an estimate because Claude subscription quota details are not fully exposed as a stable public API by the CLI. The token counts come from Claude Code's own recorded `message.usage` fields.
 
 ## Notes from quick public research
 

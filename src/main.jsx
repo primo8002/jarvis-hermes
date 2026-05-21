@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './style.css';
 
-const API = 'http://127.0.0.1:8787';
+const API = window.location.origin;
+const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/assistant`;
 const quickActions = [
   'Open my most important unread items and summarize them',
   'Search the web for the latest AI assistant demos and make a comparison table',
@@ -13,6 +14,23 @@ const quickActions = [
   'Pull current data for a topic I name and cite sources',
   'Automate a repetitive desktop/task workflow end-to-end'
 ];
+
+function fmtNumber(n) {
+  return new Intl.NumberFormat('en-US').format(Math.round(n || 0));
+}
+
+function fmtMoney(n) {
+  return `$${Number(n || 0).toFixed(2)}`;
+}
+
+function fmtTimeAgo(iso) {
+  if (!iso) return 'never';
+  const seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (seconds < 60) return `${Math.round(seconds)}s ago`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.round(seconds / 3600)}h ago`;
+  return `${Math.round(seconds / 86400)}d ago`;
+}
 
 function fmtBytes(n) {
   if (!n) return '0 B';
@@ -75,6 +93,7 @@ function App() {
   const [tools, setTools] = useState([]);
   const [traces, setTraces] = useState([]);
   const [system, setSystem] = useState(null);
+  const [usage, setUsage] = useState(null);
   const [config, setConfig] = useState(null);
   const [voiceOn, setVoiceOn] = useState(true);
   const [selfCorrection, setSelfCorrection] = useState(false);
@@ -88,13 +107,16 @@ function App() {
   useEffect(() => {
     fetch(`${API}/api/health`).then(r => r.json()).then(setConfig).catch(() => {});
     const loadSystem = () => fetch(`${API}/api/system`).then(r => r.json()).then(setSystem).catch(() => {});
+    const loadUsage = () => fetch(`${API}/api/claude-usage`).then(r => r.json()).then(setUsage).catch(() => {});
     loadSystem();
-    const int = setInterval(loadSystem, 3000);
-    return () => clearInterval(int);
+    loadUsage();
+    const sysInt = setInterval(loadSystem, 3000);
+    const usageInt = setInterval(loadUsage, 5000);
+    return () => { clearInterval(sysInt); clearInterval(usageInt); };
   }, []);
 
   useEffect(() => {
-    const ws = new WebSocket('ws://127.0.0.1:8787/assistant');
+    const ws = new WebSocket(WS_URL);
     wsRef.current = ws;
     ws.onopen = () => setConnected(true);
     ws.onclose = () => { setConnected(false); setStatus('offline'); };
@@ -183,6 +205,21 @@ function App() {
           <div className="metric"><span>Disk</span><b>{system?.disk?.use?.toFixed?.(0) || 0}%</b></div>
           <div className="bar"><i style={{ width: `${system?.disk?.use || 0}%` }} /></div>
           <div className="small">{system?.platform}<br />{system?.host} · {system?.arch}<br />Processes: {system?.processes?.all || 0}</div>
+          <h2>Claude Usage</h2>
+          <div className="usageCard">
+            <div className="usageTop"><span>{usage?.cliText || 'Loading Claude usage...'}</span><b>{usage?.lastActivity ? fmtTimeAgo(usage.lastActivity) : 'live'}</b></div>
+            <div className="usageGrid">
+              <div><small>Today</small><strong>{fmtNumber(usage?.today?.total)}</strong><em>{fmtMoney(usage?.today?.estimatedCostUsd)} est.</em></div>
+              <div><small>7 days</small><strong>{fmtNumber(usage?.week?.total)}</strong><em>{fmtMoney(usage?.week?.estimatedCostUsd)} est.</em></div>
+              <div><small>30 days</small><strong>{fmtNumber(usage?.month?.total)}</strong><em>{fmtMoney(usage?.month?.estimatedCostUsd)} est.</em></div>
+              <div><small>All time</small><strong>{fmtNumber(usage?.totals?.total)}</strong><em>{usage?.totals?.messages || 0} msgs</em></div>
+            </div>
+            <div className="usageBreakdown">
+              {(usage?.byModel || []).slice(0, 4).map(m => <p key={m.model}><span>{m.model}</span><b>{fmtNumber(m.total)}</b></p>)}
+            </div>
+            <div className="spark">{(usage?.byDay || []).map(d => <i key={d.day} title={`${d.day}: ${fmtNumber(d.total)} tokens`} style={{ height: `${Math.max(5, Math.min(100, (d.total / Math.max(...usage.byDay.map(x => x.total), 1)) * 100))}%` }} />)}</div>
+            <div className="small">Realtime polling every 5s · {usage?.source || 'Claude local telemetry'}</div>
+          </div>
           <h2>Capabilities</h2>
           <ul className="caps"><li>Voice I/O</li><li>Desktop automation via Claude CLI</li><li>Files, terminal, code, web/data pulls</li><li>Documents, research, app control</li><li>Barge-in and stop</li></ul>
         </aside>
