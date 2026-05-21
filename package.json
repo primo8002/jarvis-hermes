@@ -1,0 +1,22 @@
+{
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k \"npm:server\" \"npm:client\"",
+    "server": "node server/index.js",
+    "client": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "start": "NODE_ENV=production node server/index.js"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "vite": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "express": "latest",
+    "ws": "latest",
+    "concurrently": "latest",
+    "systeminformation": "latest",
+    "open": "latest"
+  },
+  "devDependencies": {}
+}
