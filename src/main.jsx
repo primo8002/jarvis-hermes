@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './style.css';
+import './skills.css';
 
 const API = window.location.origin;
 const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/assistant`;
@@ -100,6 +101,8 @@ function App() {
   const [traces, setTraces] = useState([]);
   const [system, setSystem] = useState(null);
   const [usage, setUsage] = useState(null);
+  const [skills, setSkills] = useState([]);
+  const [skillFilter, setSkillFilter] = useState('all');
   const [config, setConfig] = useState(null);
   const [voiceOn, setVoiceOn] = useState(true);
   const [selfCorrection, setSelfCorrection] = useState(false);
@@ -115,6 +118,7 @@ function App() {
     fetch(`${API}/api/health`).then(r => r.json()).then(setConfig).catch(() => {});
     const loadSystem = () => fetch(`${API}/api/system`).then(r => r.json()).then(setSystem).catch(() => {});
     const loadUsage = () => fetch(`${API}/api/claude-usage`).then(r => r.json()).then(setUsage).catch(() => {});
+    fetch(`${API}/api/skills`).then(r => r.json()).then(j => setSkills(j.skills || [])).catch(() => {});
     loadSystem();
     loadUsage();
     const sysInt = setInterval(loadSystem, 3000);
@@ -197,6 +201,17 @@ function App() {
     setTools(t => [{ name, input, at: new Date().toLocaleTimeString() }, ...t].slice(0, 20));
   }
 
+  async function runSkillDemo(name) {
+    addTool('skill', `Running demo for ${name}`);
+    const result = await fetch(`${API}/api/skills/${name}/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ args: ['demo'], maxScrolls: 2, dwellMs: 250 })
+    }).then(r => r.json()).catch(error => ({ ok: false, error: String(error) }));
+    addTool(name, result.summary || result.error || result.title || result.source || result);
+    if (result.summary || result.error) setTranscript(t => [...t, { role: 'jarvis', text: `${name}: ${result.summary || result.error}` }]);
+  }
+
   async function openJarvisWindow() {
     await fetch(`${API}/api/desktop/open`, {
       method: 'POST',
@@ -215,6 +230,8 @@ function App() {
   }
 
   const state = listening ? 'listening' : status;
+  const visibleSkills = skills.filter(s => skillFilter === 'all' || s.tier === skillFilter || s.status === skillFilter);
+  const skillCounts = skills.reduce((acc, s) => { acc[s.status] = (acc[s.status] || 0) + 1; return acc; }, {});
   const lastLines = tokens || transcript.filter(x => x.role === 'jarvis').slice(-1)[0]?.text || 'Awaiting command. Say “Jarvis…” or type a mission.';
 
   return <main>
@@ -268,6 +285,11 @@ function App() {
             <button onClick={() => send()}>Send</button><button onClick={startVoice}>Voice</button><button onClick={stop}>Stop</button>
           </div>
           <div className="toggles"><label><input type="checkbox" checked={voiceOn} onChange={e => setVoiceOn(e.target.checked)} /> Speak replies</label><label><input type="checkbox" checked={selfCorrection} onChange={e => setSelfCorrection(e.target.checked)} /> Self-correction</label><label><input type="checkbox" checked={visibleDesktop} onChange={e => setVisibleDesktop(e.target.checked)} /> Visible desktop</label><button onClick={openJarvisWindow}>Open desktop tab</button></div>
+          <div className="skillShelf">
+            <div className="skillHeader"><b>Jarvis Skills</b><span>{skills.length} installed · native {skillCounts.native || 0} · bridge {skillCounts.bridge || 0}</span></div>
+            <div className="skillFilters">{['all','A','B','C','D','E','F','native','planned','bridge'].map(f => <button className={skillFilter === f ? 'active' : ''} key={f} onClick={() => setSkillFilter(f)}>{f}</button>)}</div>
+            <div className="skillList">{visibleSkills.slice(0, 14).map(s => <div className="skillItem" key={s.name}><div><b>{s.name}</b><small>Tier {s.tier} · {s.status}</small></div><button onClick={() => runSkillDemo(s.name)}>demo</button></div>)}</div>
+          </div>
           <div className="chips">{quickActions.map(q => <button key={q} onClick={() => send(q)}>{q}</button>)}</div>
         </section>
 

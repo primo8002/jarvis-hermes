@@ -1,0 +1,43 @@
+# Jarvis Skills Index
+
+- [wake-word-engine](./wake-word-engine/SKILL.md) — Tier A, planned. Always-listening wake word engine using openWakeWord/Porcupine with stop interrupt and follow-up mode.
+- [streaming-stt](./streaming-stt/SKILL.md) — Tier A, browser-native. Streaming speech-to-text adapter: browser Web Speech now; faster-whisper/Whisper-large-v3-turbo local path documented.
+- [neural-tts-voice](./neural-tts-voice/SKILL.md) — Tier A, browser-native. Neural/offline TTS plan: current Web Speech output plus Piper/XTTS/Chatterbox runtime hooks.
+- [adaptive-tone](./adaptive-tone/SKILL.md) — Tier A, native. Tone router that maps task domain and last utterances to code/business/wellbeing/casual speaking style.
+- [screen-vision](./screen-vision/SKILL.md) — Tier A, planned. Screen OCR/vision capture skill for what-is-this, where-do-I-click, summarize current page, and struggle detection.
+- [camera-vision](./camera-vision/SKILL.md) — Tier A, planned. Camera frame analysis skill for look-at-this object/context understanding with local-first privacy gates.
+- [dictation-anywhere](./dictation-anywhere/SKILL.md) — Tier A, planned. Push-to-talk dictation that cleans filler/punctuation and pastes into focused apps.
+- [persistent-memory](./persistent-memory/SKILL.md) — Tier A, native. Local three-layer memory folders under ~/.jarvis/memory with Markdown mirrors and future vector/graph hooks.
+- [proactive-engine](./proactive-engine/SKILL.md) — Tier A, planned. Local event watcher for calendar/screen/clock triggers that suggests helpful actions.
+- [interrupt-barge-in](./interrupt-barge-in/SKILL.md) — Tier A, browser-native. Stop/barge-in state protocol for cancelling TTS/Claude process and broadcasting idle/listening/thinking/speaking/working.
+- [calendar-skill](./calendar-skill/SKILL.md) — Tier B, bridge. Calendar read/write/scheduling through Google Workspace/MCP when credentials are enabled.
+- [email-triage](./email-triage/SKILL.md) — Tier B, bridge. Gmail/Outlook/iCloud triage/digest/reply drafting through configured MCP/Hermes email tools.
+- [messaging-bridge](./messaging-bridge/SKILL.md) — Tier B, bridge. Unified inbox abstraction for Telegram/Slack/Discord/Signal/iMessage/WhatsApp where connectors exist.
+- [task-and-reminder-skill](./task-and-reminder-skill/SKILL.md) — Tier B, bridge. Natural-language tasks/reminders with Notion/Todoist/Reminders integration hooks.
+- [smart-home-skill](./smart-home-skill/SKILL.md) — Tier B, bridge. Home Assistant/OpenHue routines for lights, media, thermostat, locks, vacuum, and scenes.
+- [flight-and-travel](./flight-and-travel/SKILL.md) — Tier B, planned. Travel parser/status/check-in/expense workflow with explicit network and credential gates.
+- [nutrition-and-health](./nutrition-and-health/SKILL.md) — Tier B, planned. Voice food log and health trend reporting with local-first storage and opt-in wearable imports.
+- [finance-skill](./finance-skill/SKILL.md) — Tier B, planned. Read-only finance summaries and subscription audits with explicit allow-list before writes.
+- [deep-research](./deep-research/SKILL.md) — Tier C, native. Multi-hop research orchestration using Cowork visible browser automation plus Claude synthesis/citations.
+- [code-copilot-skill](./code-copilot-skill/SKILL.md) — Tier C, native. Project-aware coding orchestrator that delegates heavy work to Claude Code CLI already wired into Jarvis.
+- [terminal-operator](./terminal-operator/SKILL.md) — Tier C, native. Visible terminal execution protocol with allow/deny rules, dry-run copy, mission log, and gnome-terminal display.
+- [browser-operator](./browser-operator/SKILL.md) — Tier C, native. Visible Brave/Chrome automation built on the Cowork browser endpoint; roadmap includes forms, tabs, and vault login.
+- [document-rag](./document-rag/SKILL.md) — Tier C, planned. Local document indexing for ~/Documents, PDFs, notes, and code with SQLite/LanceDB hooks.
+- [slide-and-doc-author](./slide-and-doc-author/SKILL.md) — Tier C, bridge. Google Docs/Slides/Sheets, Notion, and Markdown brief generation through connected MCP/tools.
+- [meeting-recorder](./meeting-recorder/SKILL.md) — Tier C, planned. Live meeting transcription and action items with Zoom/Meet hooks and local transcript storage.
+- [cursor-pebble-ui](./cursor-pebble-ui/SKILL.md) — Tier D, planned. Always-on-top cursor bubble/pebble visualizing Jarvis state.
+- [3d-avatar-overlay](./3d-avatar-overlay/SKILL.md) — Tier D, planned. Optional VRM/3D avatar with lip sync and eye tracking.
+- [hud-overlay](./hud-overlay/SKILL.md) — Tier D, planned. Iron-Man-style transparent HUD for metrics, badges, and on-deck tasks.
+- [emotion-and-sentiment](./emotion-and-sentiment/SKILL.md) — Tier D, native. Text sentiment/tone detection feeding adaptive-tone without over-naming emotions.
+- [wellbeing-coach](./wellbeing-coach/SKILL.md) — Tier D, planned. Posture/screen-time/breath/focus/end-of-day nudges with local opt-in telemetry.
+- [mcp-host](./mcp-host/SKILL.md) — Tier E, bridge. First-class MCP host plan: register local/remote servers through config and surface tools to Jarvis.
+- [skill-creator](./skill-creator/SKILL.md) — Tier E, native. Meta-skill for creating agentskills-compatible SKILL.md files after successful workflows.
+- [multi-agent-orchestrator](./multi-agent-orchestrator/SKILL.md) — Tier E, native. Researcher/coder/planner/reviewer orchestration via Claude Code prompts and future subagent processes.
+- [scheduler-and-cron](./scheduler-and-cron/SKILL.md) — Tier E, native. Persistent schedule spec at ~/.jarvis/schedule.json for cron/webhook/file/calendar triggers.
+- [sidecar-mesh](./sidecar-mesh/SKILL.md) — Tier E, planned. JWT WebSocket sidecar model for laptop/phone/home-server control from one Jarvis brain.
+- [permission-vault](./permission-vault/SKILL.md) — Tier E, native. Per-skill allow/deny matrix and audit-log path that complements bypass mode for safer sharing.
+- [fail-safe-and-undo](./fail-safe-and-undo/SKILL.md) — Tier E, native. Dry-run/snapshot protocol before destructive actions; single-key undo roadmap.
+- [personal-style-learner](./personal-style-learner/SKILL.md) — Tier E, planned. Learns Svanik writing/code/email style locally and exposes a style profile to other skills.
+- [car-mode](./car-mode/SKILL.md) — Tier F, planned. Bluetooth hands-free voice UI for messaging, email, Spotify, and navigation handoff.
+- [field-trip-mode](./field-trip-mode/SKILL.md) — Tier F, planned. Camera+mic+GPS bundle for outdoor walking narration and memory capture.
+- [dream-journal](./dream-journal/SKILL.md) — Tier F, native. Voice-only brain-dump/dream-journal capture into ~/.jarvis/memory/diary with searchable Markdown.

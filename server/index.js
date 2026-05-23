@@ -11,6 +11,8 @@ import { buildLimitStatus } from './usageLimits.js';
 import { clearClaudeWebUsageCache, fetchClaudeWebUsage, openClaudeUsageWindow } from './claudeWebUsage.js';
 import { detectResearchUrl, runVisibleCoworkResearch, sanitizeResearchQuery } from './coworkAutomation.js';
 
+import { listSkills, runSkill, ensureSkillLibrary } from './skills.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, '..');
@@ -25,6 +27,8 @@ const DESKTOP_LOG_DIR = process.env.JARVIS_DESKTOP_LOG_DIR || path.join(os.homed
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
+
+await ensureSkillLibrary({ root: ROOT });
 
 app.get('/api/health', async (_req, res) => {
   res.json({ ok: true, name: 'Jarvis', root: ROOT, permissionMode, model: model || 'claude default', port: PORT, visibleDesktop: DEFAULT_VISIBLE_DESKTOP });
@@ -85,6 +89,23 @@ app.post('/api/desktop/open', async (req, res) => {
   try {
     const result = openDesktopTarget(req.body || {});
     res.json({ ok: true, ...result });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: String(error?.message || error) });
+  }
+});
+
+app.get('/api/skills', async (_req, res) => {
+  try {
+    res.json({ ok: true, skills: await listSkills({ root: ROOT }) });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: String(error?.message || error) });
+  }
+});
+
+app.post('/api/skills/:name/run', async (req, res) => {
+  try {
+    const result = await runSkill(req.params.name, { args: req.body?.args || [], body: req.body || {}, root: ROOT });
+    res.status(result.ok ? 200 : 404).json(result);
   } catch (error) {
     res.status(500).json({ ok: false, error: String(error?.message || error) });
   }

@@ -18,6 +18,7 @@ Research-informed Jarvis capability set:
 - Barge-in: hit Stop or start a new voice command to interrupt an active Claude process.
 - Self-correction mode: Jarvis automatically asks Claude to verify/fix its previous answer after a task.
 - Data pull mode: commands can ask Claude to search/fetch/process data using its available web/tools.
+- Agentskills-compatible skill library under `./skills/<name>/SKILL.md` with 41 adjusted Jarvis skills, a cockpit skill shelf, REST skill runner, and `npm run jarvis -- run <skill> -- <args>`.
 
 ## Install and run
 
@@ -116,6 +117,33 @@ Use commands like:
 Go to example.com and research it visibly.
 Open stripe.com/pricing, scroll through it, and tell me what you learned.
 ```
+
+## Jarvis skill library
+
+Jarvis now adapts the full skill list from the Claude Cowork-style research pass into an agentskills.io-compatible library under:
+
+```text
+./skills/<skill>/SKILL.md
+```
+
+The implementation is adjusted to what this repo already has: local Vite/React cockpit, Node/Express server, Claude Code CLI bridge, visible desktop monitor, and Cowork visible browser automation. Skills that already exist are marked `native`; integrations that depend on external MCP/accounts are marked `bridge`; hardware/model-heavy items are installed as `planned` local-first skill contracts with safety and implementation notes.
+
+Runtime surfaces:
+
+```bash
+npm run jarvis -- skills
+npm run jarvis -- run adaptive-tone -- debug this failing test
+npm run jarvis -- run browser-operator -- https://example.com research visibly
+```
+
+REST surfaces:
+
+```text
+GET  /api/skills
+POST /api/skills/:name/run
+```
+
+The cockpit center panel includes a Jarvis Skills shelf with filters by tier/status and one-click demo buttons. State/logs stay under `~/.jarvis/`.
 
 ## Notes from quick public research
 

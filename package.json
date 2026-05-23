@@ -4,9 +4,10 @@
     "dev": "concurrently -k \"npm:server\" \"npm:client\"",
     "server": "node server/index.js",
     "client": "vite --host 127.0.0.1",
-    "test": "node tests/usageLimits.test.js && node tests/claudeWebUsage.test.js && node tests/coworkAutomation.test.js",
+    "test": "node tests/usageLimits.test.js && node tests/claudeWebUsage.test.js && node tests/coworkAutomation.test.js && node tests/skillsRegistry.test.js",
     "build": "vite build",
-    "start": "NODE_ENV=production node server/index.js"
+    "start": "NODE_ENV=production node server/index.js",
+    "jarvis": "node bin/jarvis.js"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
