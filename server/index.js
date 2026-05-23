@@ -8,7 +8,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import si from 'systeminformation';
 import { buildLimitStatus } from './usageLimits.js';
-import { clearClaudeWebUsageCache, fetchClaudeWebUsage } from './claudeWebUsage.js';
+import { clearClaudeWebUsageCache, fetchClaudeWebUsage, openClaudeUsageWindow } from './claudeWebUsage.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -93,7 +93,14 @@ app.post('/api/claude-usage/refresh-web', async (_req, res) => {
   try {
     usageCache = { at: 0, data: null };
     clearClaudeWebUsageCache();
-    res.json(await fetchClaudeWebUsage({ force: true, openLogin: true }));
+    let usage = { ok: false, source: 'claude-ai-settings-usage', loginRequired: true, url: 'https://claude.ai/settings/usage' };
+    let openAttempt = await openClaudeUsageWindow({ force: true });
+    try {
+      usage = await fetchClaudeWebUsage({ force: true, openLogin: false });
+    } catch (error) {
+      usage = { ...usage, error: String(error?.message || error) };
+    }
+    res.json({ ...usage, openAttempt });
   } catch (error) {
     res.status(500).json({ ok: false, error: String(error?.message || error) });
   }

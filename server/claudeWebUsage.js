@@ -6,11 +6,16 @@ const CLAUDE_USAGE_URL = 'https://claude.ai/settings/usage';
 const WEB_USAGE_CACHE_MS = Number(process.env.JARVIS_CLAUDE_USAGE_WEB_CACHE_MS || 60_000);
 const DEFAULT_PROFILE_DIR = path.join(os.homedir(), '.jarvis', 'claude-usage-browser');
 const DEFAULT_BRAVE = '/usr/bin/brave-browser';
+const DEFAULT_OPENER = 'xdg-open';
 let webUsageCache = { at: 0, data: null };
 let loginWindowOpenedAt = 0;
 
 function executablePath() {
   return process.env.JARVIS_CLAUDE_USAGE_BROWSER || process.env.BROWSER || DEFAULT_BRAVE;
+}
+
+function openerPath() {
+  return process.env.JARVIS_CLAUDE_USAGE_OPENER || DEFAULT_OPENER;
 }
 
 function userDataDir() {
@@ -21,17 +26,19 @@ function headlessMode() {
   return process.env.JARVIS_CLAUDE_USAGE_HEADLESS !== 'false' ? 'new' : false;
 }
 
-async function openLoginWindow() {
-  if (Date.now() - loginWindowOpenedAt < 5 * 60_000) return;
+export async function openClaudeUsageWindow({ force = false, isolatedProfile = false } = {}) {
+  if (!force && Date.now() - loginWindowOpenedAt < 5 * 60_000) {
+    return { ok: true, skipped: true, reason: 'recently-opened', url: CLAUDE_USAGE_URL, browserProfile: isolatedProfile ? userDataDir() : 'default-browser' };
+  }
   loginWindowOpenedAt = Date.now();
   const { spawn } = await import('child_process');
-  const child = spawn(executablePath(), [
-    `--user-data-dir=${userDataDir()}`,
-    '--no-first-run',
-    '--no-default-browser-check',
-    CLAUDE_USAGE_URL
-  ], { detached: true, stdio: 'ignore', env: process.env });
+  const command = isolatedProfile ? executablePath() : openerPath();
+  const args = isolatedProfile
+    ? [`--user-data-dir=${userDataDir()}`, '--no-first-run', '--no-default-browser-check', CLAUDE_USAGE_URL]
+    : [CLAUDE_USAGE_URL];
+  const child = spawn(command, args, { detached: true, stdio: 'ignore', env: process.env });
   child.unref();
+  return { ok: true, command, args, pid: child.pid, url: CLAUDE_USAGE_URL, browserProfile: isolatedProfile ? userDataDir() : 'default-browser' };
 }
 
 export function clearClaudeWebUsageCache() {
@@ -71,7 +78,9 @@ export async function fetchClaudeWebUsage({ force = false, openLogin = false } =
       browserProfile: userDataDir(),
       error: parsed.ok || loginRequired ? null : 'No usage percentages found on claude.ai/settings/usage'
     };
-    if (loginRequired && openLogin) await openLoginWindow();
+    if (loginRequired && openLogin) {
+      data.openAfterClose = true;
+    }
     webUsageCache = { at: Date.now(), data };
     return data;
   } catch (error) {

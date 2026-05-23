@@ -203,6 +203,8 @@ function App() {
   async function refreshClaudeWebUsage() {
     const next = await fetch(`${API}/api/claude-usage/refresh-web`, { method: 'POST' }).then(r => r.json()).catch(error => ({ ok: false, error: String(error) }));
     setUsage(u => u ? { ...u, webUsage: next, limits: u.limits } : u);
+    if (next?.openAttempt?.ok) addTool('desktop', `Opened Claude.ai usage window with PID ${next.openAttempt.pid || 'existing'}`);
+    if (next?.error) addTool('claude.ai', next.error);
     const full = await fetch(`${API}/api/claude-usage`).then(r => r.json()).catch(() => null);
     if (full) setUsage(full);
   }

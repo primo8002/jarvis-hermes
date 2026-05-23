@@ -61,7 +61,7 @@ Optional:
 - `JARVIS_USAGE_CACHE_MS=3000` — backend cache for the Claude usage scanner
 - `JARVIS_CLAUDE_USAGE_WEB=true|false` — enable direct `https://claude.ai/settings/usage` percentage pulls
 - `JARVIS_CLAUDE_USAGE_WEB_CACHE_MS=60000` — cache for the claude.ai usage-page browser pull
-- `JARVIS_CLAUDE_USAGE_BROWSER=/usr/bin/brave-browser` — browser executable used for the usage-page pull
+- `JARVIS_CLAUDE_USAGE_OPENER=xdg-open` — visible desktop opener used by the refresh button
 - `JARVIS_CLAUDE_USAGE_BROWSER_PROFILE=~/.jarvis/claude-usage-browser` — persistent browser profile for claude.ai login/session
 - `JARVIS_CLAUDE_USAGE_HEADLESS=true|false` — set `false` to watch the usage browser; click “Refresh Claude.ai usage” if login is needed
 - `JARVIS_VISIBLE_DESKTOP=true|false` — enable visible desktop mission windows by default
@@ -77,7 +77,7 @@ Jarvis shows a live Claude Usage module in the left rail. It refreshes every 5 s
 2. `claude /usage` for the official subscription/usage status text Claude exposes locally.
 3. Local Claude Code transcript files under `~/.claude/projects/**/*.jsonl` for token telemetry, model breakdowns, recent activity, today/7-day/30-day/all-time totals, and estimated dollar cost.
 
-The transcript-derived cost is an estimate because Claude subscription quota details are not fully exposed as a stable public API by the CLI. The token counts come from Claude Code's own recorded `message.usage` fields. Limit percentages prefer the direct claude.ai settings page. If the Jarvis usage browser profile is not logged in, the panel shows `login needed`; click `Refresh Claude.ai usage` to open the persistent Jarvis browser profile, log in once, and future refreshes will read the exact page percentages. If the web page is unavailable, Jarvis falls back to `claude /usage` text and then estimated token budgets.
+The transcript-derived cost is an estimate because Claude subscription quota details are not fully exposed as a stable public API by the CLI. The token counts come from Claude Code's own recorded `message.usage` fields. Limit percentages prefer the direct claude.ai settings page. If the Jarvis usage browser profile is not logged in, the panel shows `login needed`; click `Refresh Claude.ai usage` to immediately open `https://claude.ai/settings/usage` in your normal desktop browser and trigger a direct refresh attempt. If the web page is unavailable, Jarvis falls back to `claude /usage` text and then estimated token budgets.
 
 ## Visible Desktop Mode
 
