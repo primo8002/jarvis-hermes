@@ -8,6 +8,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import si from 'systeminformation';
 import { buildLimitStatus } from './usageLimits.js';
+import { clearClaudeWebUsageCache, fetchClaudeWebUsage } from './claudeWebUsage.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -88,10 +89,21 @@ app.post('/api/desktop/open', async (req, res) => {
   }
 });
 
+app.post('/api/claude-usage/refresh-web', async (_req, res) => {
+  try {
+    usageCache = { at: 0, data: null };
+    clearClaudeWebUsageCache();
+    res.json(await fetchClaudeWebUsage({ force: true, openLogin: true }));
+  } catch (error) {
+    res.status(500).json({ ok: false, error: String(error?.message || error) });
+  }
+});
+
 
 const CLAUDE_HOME = process.env.CLAUDE_HOME || path.join(os.homedir(), '.claude');
 const CLAUDE_PROJECTS_DIR = path.join(CLAUDE_HOME, 'projects');
 const USAGE_CACHE_MS = Number(process.env.JARVIS_USAGE_CACHE_MS || 3000);
+const USE_CLAUDE_WEB_USAGE = process.env.JARVIS_CLAUDE_USAGE_WEB !== 'false';
 let usageCache = { at: 0, data: null };
 let usageCliCache = { at: 0, text: '' };
 
@@ -211,12 +223,14 @@ async function collectClaudeUsage() {
   }));
 
   const cliText = await runClaudeUsageCommand();
-  const limits = buildLimitStatus({ fiveHour: fiveHourTotals, week: weekTotals, cliText, fiveHourLimitTokens: FIVE_HOUR_LIMIT_TOKENS, weeklyLimitTokens: WEEKLY_LIMIT_TOKENS });
+  const webUsage = USE_CLAUDE_WEB_USAGE ? await fetchClaudeWebUsage().catch(error => ({ ok: false, source: 'claude-ai-settings-usage', error: String(error?.message || error) })) : null;
+  const limits = buildLimitStatus({ fiveHour: fiveHourTotals, week: weekTotals, cliText, webUsage, fiveHourLimitTokens: FIVE_HOUR_LIMIT_TOKENS, weeklyLimitTokens: WEEKLY_LIMIT_TOKENS });
   const data = {
     ok: true,
     source: 'Claude CLI /usage + ~/.claude/projects JSONL transcript telemetry',
     refreshedAt: now.toISOString(),
     cliText,
+    webUsage,
     lastActivity,
     filesScanned,
     totals,
@@ -228,7 +242,7 @@ async function collectClaudeUsage() {
     byModel: Object.entries(byModel).sort((a, b) => b[1].total - a[1].total).slice(0, 8).map(([model, data]) => ({ model, ...data })),
     byDay: Object.entries(byDay).sort(([a], [b]) => a.localeCompare(b)).slice(-14).map(([day, data]) => ({ day, ...data })),
     recent: recent.sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 8),
-    note: 'Token/cost numbers are local estimates from Claude Code transcript usage fields; subscription quota/limit text comes from claude /usage when available. Limit percentages use claude /usage percentages when present, otherwise configurable estimated token budgets.'
+    note: 'Token/cost numbers are local estimates from Claude Code transcript usage fields; subscription quota/limit text comes from claude.ai/settings/usage when available, then claude /usage, then configurable estimated token budgets.'
   };
   usageCache = { at: Date.now(), data };
   return data;

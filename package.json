@@ -17,7 +17,8 @@
     "ws": "latest",
     "concurrently": "latest",
     "systeminformation": "latest",
-    "open": "latest"
+    "open": "latest",
+    "puppeteer-core": "latest"
   },
   "devDependencies": {}
 }

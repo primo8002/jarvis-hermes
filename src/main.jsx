@@ -200,6 +200,13 @@ function App() {
     }).catch(() => {});
   }
 
+  async function refreshClaudeWebUsage() {
+    const next = await fetch(`${API}/api/claude-usage/refresh-web`, { method: 'POST' }).then(r => r.json()).catch(error => ({ ok: false, error: String(error) }));
+    setUsage(u => u ? { ...u, webUsage: next, limits: u.limits } : u);
+    const full = await fetch(`${API}/api/claude-usage`).then(r => r.json()).catch(() => null);
+    if (full) setUsage(full);
+  }
+
   const state = listening ? 'listening' : status;
   const lastLines = tokens || transcript.filter(x => x.role === 'jarvis').slice(-1)[0]?.text || 'Awaiting command. Say “Jarvis…” or type a mission.';
 
@@ -234,6 +241,12 @@ function App() {
             <div className="usageBreakdown">
               {(usage?.byModel || []).slice(0, 4).map(m => <p key={m.model}><span>{m.model}</span><b>{fmtNumber(m.total)}</b></p>)}
             </div>
+            <div className="usageBreakdown">
+              <p><span>Limit source</span><b>{usage?.limits?.weekly?.source || 'loading'}</b></p>
+              <p><span>Claude.ai</span><b>{usage?.webUsage?.ok ? 'connected' : usage?.webUsage?.loginRequired ? 'login needed' : 'fallback'}</b></p>
+            </div>
+            {usage?.webUsage?.loginRequired && <div className="usageWarn">Login needed in the Jarvis Claude usage browser profile. Click refresh to open Claude usage.</div>}
+            <button className="miniAction" onClick={refreshClaudeWebUsage}>Refresh Claude.ai usage</button>
             <div className="spark">{(usage?.byDay || []).map(d => <i key={d.day} title={`${d.day}: ${fmtNumber(d.total)} tokens`} style={{ height: `${Math.max(5, Math.min(100, (d.total / Math.max(...usage.byDay.map(x => x.total), 1)) * 100))}%` }} />)}</div>
             <div className="small">Realtime polling every 5s · {usage?.source || 'Claude local telemetry'}<br />{usage?.limits?.note}</div>
           </div>
