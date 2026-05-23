@@ -23,6 +23,11 @@ function fmtMoney(n) {
   return `$${Number(n || 0).toFixed(2)}`;
 }
 
+function fmtPercent(n) {
+  if (n == null || Number.isNaN(Number(n))) return 'n/a';
+  return `${Number(n).toFixed(Number(n) >= 10 ? 0 : 1)}%`;
+}
+
 function fmtTimeAgo(iso) {
   if (!iso) return 'never';
   const seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
@@ -97,6 +102,7 @@ function App() {
   const [config, setConfig] = useState(null);
   const [voiceOn, setVoiceOn] = useState(true);
   const [selfCorrection, setSelfCorrection] = useState(false);
+  const [visibleDesktop, setVisibleDesktop] = useState(true);
   const [listening, setListening] = useState(false);
   const wsRef = useRef(null);
   const recRef = useRef(null);
@@ -128,6 +134,7 @@ function App() {
       if (msg.type === 'tool') setTools(t => [{ name: msg.name, input: msg.input, at: new Date().toLocaleTimeString() }, ...t].slice(0, 20));
       if (msg.type === 'trace') setTraces(t => [{ event: msg.event, at: new Date().toLocaleTimeString() }, ...t].slice(0, 28));
       if (msg.type === 'stderr') setTraces(t => [{ event: msg.text.trim().slice(0, 180), at: new Date().toLocaleTimeString(), err: true }, ...t].slice(0, 28));
+      if (msg.type === 'desktop') setTraces(t => [{ event: `visible desktop: ${msg.status} ${msg.logPath || ''}`.trim(), at: new Date().toLocaleTimeString() }, ...t].slice(0, 28));
       if (msg.type === 'done') {
         setStatus(msg.code === 0 ? 'speaking' : 'error');
         if (msg.text) {
@@ -157,7 +164,7 @@ function App() {
     setTokens('');
     setInput('');
     setStatus('thinking');
-    wsRef.current.send(JSON.stringify({ type: 'prompt', text, options: { selfCorrection } }));
+    wsRef.current.send(JSON.stringify({ type: 'prompt', text, options: { selfCorrection, visibleDesktop } }));
   }
 
   function stop() {
@@ -185,6 +192,14 @@ function App() {
     rec.start();
   }
 
+  async function openJarvisWindow() {
+    await fetch(`${API}/api/desktop/open`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target: window.location.href })
+    }).catch(() => {});
+  }
+
   const state = listening ? 'listening' : status;
   const lastLines = tokens || transcript.filter(x => x.role === 'jarvis').slice(-1)[0]?.text || 'Awaiting command. Say “Jarvis…” or type a mission.';
 
@@ -209,6 +224,8 @@ function App() {
           <div className="usageCard">
             <div className="usageTop"><span>{usage?.cliText || 'Loading Claude usage...'}</span><b>{usage?.lastActivity ? fmtTimeAgo(usage.lastActivity) : 'live'}</b></div>
             <div className="usageGrid">
+              <div><small>5h limit</small><strong>{fmtPercent(usage?.limits?.fiveHour?.percent)}</strong><em>{fmtNumber(usage?.fiveHour?.total)} tokens</em><span className="miniBar"><i style={{ width: `${Math.min(100, usage?.limits?.fiveHour?.percent || 0)}%` }} /></span></div>
+              <div><small>Weekly limit</small><strong>{fmtPercent(usage?.limits?.weekly?.percent)}</strong><em>{fmtNumber(usage?.week?.total)} tokens</em><span className="miniBar"><i style={{ width: `${Math.min(100, usage?.limits?.weekly?.percent || 0)}%` }} /></span></div>
               <div><small>Today</small><strong>{fmtNumber(usage?.today?.total)}</strong><em>{fmtMoney(usage?.today?.estimatedCostUsd)} est.</em></div>
               <div><small>7 days</small><strong>{fmtNumber(usage?.week?.total)}</strong><em>{fmtMoney(usage?.week?.estimatedCostUsd)} est.</em></div>
               <div><small>30 days</small><strong>{fmtNumber(usage?.month?.total)}</strong><em>{fmtMoney(usage?.month?.estimatedCostUsd)} est.</em></div>
@@ -218,7 +235,7 @@ function App() {
               {(usage?.byModel || []).slice(0, 4).map(m => <p key={m.model}><span>{m.model}</span><b>{fmtNumber(m.total)}</b></p>)}
             </div>
             <div className="spark">{(usage?.byDay || []).map(d => <i key={d.day} title={`${d.day}: ${fmtNumber(d.total)} tokens`} style={{ height: `${Math.max(5, Math.min(100, (d.total / Math.max(...usage.byDay.map(x => x.total), 1)) * 100))}%` }} />)}</div>
-            <div className="small">Realtime polling every 5s · {usage?.source || 'Claude local telemetry'}</div>
+            <div className="small">Realtime polling every 5s · {usage?.source || 'Claude local telemetry'}<br />{usage?.limits?.note}</div>
           </div>
           <h2>Capabilities</h2>
           <ul className="caps"><li>Voice I/O</li><li>Desktop automation via Claude CLI</li><li>Files, terminal, code, web/data pulls</li><li>Documents, research, app control</li><li>Barge-in and stop</li></ul>
@@ -230,7 +247,7 @@ function App() {
             <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()} placeholder="Tell Jarvis what to do..." />
             <button onClick={() => send()}>Send</button><button onClick={startVoice}>Voice</button><button onClick={stop}>Stop</button>
           </div>
-          <div className="toggles"><label><input type="checkbox" checked={voiceOn} onChange={e => setVoiceOn(e.target.checked)} /> Speak replies</label><label><input type="checkbox" checked={selfCorrection} onChange={e => setSelfCorrection(e.target.checked)} /> Self-correction</label></div>
+          <div className="toggles"><label><input type="checkbox" checked={voiceOn} onChange={e => setVoiceOn(e.target.checked)} /> Speak replies</label><label><input type="checkbox" checked={selfCorrection} onChange={e => setSelfCorrection(e.target.checked)} /> Self-correction</label><label><input type="checkbox" checked={visibleDesktop} onChange={e => setVisibleDesktop(e.target.checked)} /> Visible desktop</label><button onClick={openJarvisWindow}>Open desktop tab</button></div>
           <div className="chips">{quickActions.map(q => <button key={q} onClick={() => send(q)}>{q}</button>)}</div>
         </section>
 

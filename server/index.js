@@ -7,6 +7,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import si from 'systeminformation';
+import { buildLimitStatus } from './usageLimits.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,12 +16,76 @@ const PORT = Number(process.env.PORT || 8787);
 const permissionMode = process.env.JARVIS_PERMISSION_MODE || 'bypass';
 const model = process.env.JARVIS_CLAUDE_MODEL || '';
 const maxTurns = process.env.JARVIS_MAX_TURNS || '20';
+const DEFAULT_VISIBLE_DESKTOP = process.env.JARVIS_VISIBLE_DESKTOP !== 'false';
+const FIVE_HOUR_LIMIT_TOKENS = Number(process.env.JARVIS_CLAUDE_5H_TOKEN_LIMIT || 7_000_000);
+const WEEKLY_LIMIT_TOKENS = Number(process.env.JARVIS_CLAUDE_WEEKLY_TOKEN_LIMIT || 70_000_000);
+const DESKTOP_LOG_DIR = process.env.JARVIS_DESKTOP_LOG_DIR || path.join(os.homedir(), '.jarvis', 'missions');
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
 
 app.get('/api/health', async (_req, res) => {
-  res.json({ ok: true, name: 'Jarvis', root: ROOT, permissionMode, model: model || 'claude default', port: PORT });
+  res.json({ ok: true, name: 'Jarvis', root: ROOT, permissionMode, model: model || 'claude default', port: PORT, visibleDesktop: DEFAULT_VISIBLE_DESKTOP });
+});
+
+function launchDetached(command, args, options = {}) {
+  const child = spawn(command, args, { detached: true, stdio: 'ignore', env: process.env, ...options });
+  child.unref();
+  return { command, args, pid: child.pid };
+}
+
+function shellEscape(value) {
+  return `'${String(value).replace(/'/g, `'"'"'`)}'`;
+}
+
+function sanitizeMissionId(value) {
+  return String(value || crypto.randomUUID()).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80) || crypto.randomUUID();
+}
+
+async function appendMissionLog(mission, text) {
+  if (!mission?.logPath || !text) return;
+  try { await fs.appendFile(mission.logPath, text); } catch {}
+}
+
+async function startVisibleMissionWindow(userText) {
+  await fs.mkdir(DESKTOP_LOG_DIR, { recursive: true });
+  const id = sanitizeMissionId(`${new Date().toISOString()}-${crypto.randomUUID()}`);
+  const logPath = path.join(DESKTOP_LOG_DIR, `${id}.log`);
+  const header = [
+    `Jarvis visible mission started: ${new Date().toLocaleString()}`,
+    `Project: ${ROOT}`,
+    `User command: ${userText}`,
+    '',
+    'Live Claude stream follows. Keep this window open to watch Jarvis work.',
+    '------------------------------------------------------------',
+    ''
+  ].join('\n');
+  await fs.writeFile(logPath, header);
+  let launch = null;
+  try {
+    launch = launchDetached('gnome-terminal', ['--title', 'Jarvis Mission Monitor', '--', 'bash', '-lc', `tail -f ${shellEscape(logPath)}; exec bash`]);
+  } catch {
+    try { launch = launchDetached('xterm', ['-T', 'Jarvis Mission Monitor', '-e', 'tail', '-f', logPath]); } catch {}
+  }
+  return { id, logPath, launch };
+}
+
+function openDesktopTarget({ target, type = 'auto', command }) {
+  if (type === 'terminal') {
+    const shellCommand = command || target || 'bash';
+    return launchDetached('gnome-terminal', ['--title', 'Jarvis Terminal', '--', 'bash', '-lc', `${shellCommand}; exec bash`]);
+  }
+  if (!target) throw new Error('target is required');
+  return launchDetached('xdg-open', [target]);
+}
+
+app.post('/api/desktop/open', async (req, res) => {
+  try {
+    const result = openDesktopTarget(req.body || {});
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: String(error?.message || error) });
+  }
 });
 
 
@@ -94,10 +159,12 @@ async function collectClaudeUsage() {
   if (usageCache.data && Date.now() - usageCache.at < USAGE_CACHE_MS) return usageCache.data;
   const now = new Date();
   const today = dayKey(now);
+  const fiveHoursAgo = Date.now() - 5 * 60 * 60 * 1000;
   const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
   const totals = emptyTokenBucket();
   const todayTotals = emptyTokenBucket();
+  const fiveHourTotals = emptyTokenBucket();
   const weekTotals = emptyTokenBucket();
   const monthTotals = emptyTokenBucket();
   const byModel = {};
@@ -135,6 +202,7 @@ async function collectClaudeUsage() {
         if (!byDay[key]) byDay[key] = emptyTokenBucket();
         addUsage(byDay[key], usage, modelName);
         if (key === today) addUsage(todayTotals, usage, modelName);
+        if (tsMs >= fiveHoursAgo) addUsage(fiveHourTotals, usage, modelName);
         if (tsMs >= sevenDaysAgo) addUsage(weekTotals, usage, modelName);
         if (tsMs >= thirtyDaysAgo) addUsage(monthTotals, usage, modelName);
         recent.push({ at: ts.toISOString(), model: modelName, tokens: (usage.input_tokens || 0) + (usage.output_tokens || 0) + (usage.cache_creation_input_tokens || 0) + (usage.cache_read_input_tokens || 0), output: usage.output_tokens || 0 });
@@ -143,6 +211,7 @@ async function collectClaudeUsage() {
   }));
 
   const cliText = await runClaudeUsageCommand();
+  const limits = buildLimitStatus({ fiveHour: fiveHourTotals, week: weekTotals, cliText, fiveHourLimitTokens: FIVE_HOUR_LIMIT_TOKENS, weeklyLimitTokens: WEEKLY_LIMIT_TOKENS });
   const data = {
     ok: true,
     source: 'Claude CLI /usage + ~/.claude/projects JSONL transcript telemetry',
@@ -152,12 +221,14 @@ async function collectClaudeUsage() {
     filesScanned,
     totals,
     today: todayTotals,
+    fiveHour: fiveHourTotals,
     week: weekTotals,
+    limits,
     month: monthTotals,
     byModel: Object.entries(byModel).sort((a, b) => b[1].total - a[1].total).slice(0, 8).map(([model, data]) => ({ model, ...data })),
     byDay: Object.entries(byDay).sort(([a], [b]) => a.localeCompare(b)).slice(-14).map(([day, data]) => ({ day, ...data })),
     recent: recent.sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 8),
-    note: 'Token/cost numbers are local estimates from Claude Code transcript usage fields; subscription quota/limit text comes from claude /usage when available.'
+    note: 'Token/cost numbers are local estimates from Claude Code transcript usage fields; subscription quota/limit text comes from claude /usage when available. Limit percentages use claude /usage percentages when present, otherwise configurable estimated token budgets.'
   };
   usageCache = { at: Date.now(), data };
   return data;
@@ -212,7 +283,8 @@ function buildClaudeArgs(payload) {
 }
 
 function jarvisPrompt(userText, options = {}) {
-  return `You are Jarvis, Svanik's local voice-first AI assistant running through Claude Code CLI on his computer.\n\nCapabilities expected:\n- Use the computer, filesystem, terminal, code tools, and available web/data tools to complete the user's task.\n- Be autonomous, practical, and concise.\n- For dangerous irreversible actions, verify intent if needed, but otherwise execute tasks end-to-end.\n- Report what you did and any paths, commands, or data sources used.\n- If asked to pull data, fetch current data and summarize with source context.\n\nSession switches:\n- selfCorrection=${options.selfCorrection ? 'enabled' : 'disabled'}\n- spokenMode=true\n\nUser command:\n${userText}`;
+  const visibleDesktopInstructions = options.visibleDesktop ? `\nVisible desktop mode is ON. Whenever a task benefits from visual confirmation, open real desktop windows/tabs so Svanik can watch you work. Use commands such as:\n- xdg-open "https://example.com" to open websites in the desktop browser.\n- xdg-open /path/to/file or xdg-open /path/to/folder to show files/folders.\n- gnome-terminal -- bash -lc 'command; exec bash' for long-running visible terminal work.\n- Keep destructive or private actions inside localhost/local tools unless explicitly requested.\nA live mission monitor window is tailing this log: ${options.missionLog || 'not available'}. Mention important visible windows you opened.` : `\nVisible desktop mode is OFF. Work normally through CLI/local tools unless the user explicitly asks for GUI windows.`;
+  return `You are Jarvis, Svanik's local voice-first AI assistant running through Claude Code CLI on his computer.\n\nCapabilities expected:\n- Use the computer, filesystem, terminal, code tools, and available web/data tools to complete the user's task.\n- Be autonomous, practical, and concise.\n- For dangerous irreversible actions, verify intent if needed, but otherwise execute tasks end-to-end.\n- Report what you did and any paths, commands, or data sources used.\n- If asked to pull data, fetch current data and summarize with source context.${visibleDesktopInstructions}\n\nSession switches:\n- selfCorrection=${options.selfCorrection ? 'enabled' : 'disabled'}\n- visibleDesktop=${options.visibleDesktop ? 'enabled' : 'disabled'}\n- spokenMode=true\n\nUser command:\n${userText}`;
 }
 
 function send(ws, obj) {
@@ -223,7 +295,7 @@ wss.on('connection', (ws) => {
   const id = crypto.randomUUID();
   send(ws, { type: 'hello', id, permissionMode, model: model || 'claude default', root: ROOT });
 
-  ws.on('message', (raw) => {
+  ws.on('message', async (raw) => {
     let msg;
     try { msg = JSON.parse(raw.toString()); } catch { return send(ws, { type: 'error', error: 'Invalid JSON' }); }
 
@@ -242,10 +314,22 @@ wss.on('connection', (ws) => {
     const existing = running.get(id);
     if (existing) existing.kill('SIGTERM');
 
-    const prompt = jarvisPrompt(msg.text || '', msg.options || {});
+    const visibleDesktop = msg.options?.visibleDesktop ?? DEFAULT_VISIBLE_DESKTOP;
+    let mission = null;
+    if (visibleDesktop) {
+      try {
+        mission = await startVisibleMissionWindow(msg.text || '');
+        send(ws, { type: 'desktop', status: 'visible-mission-window', logPath: mission.logPath, launch: mission.launch });
+      } catch (error) {
+        send(ws, { type: 'stderr', text: `Visible desktop monitor unavailable: ${String(error?.message || error)}` });
+      }
+    }
+
+    const prompt = jarvisPrompt(msg.text || '', { ...(msg.options || {}), visibleDesktop, missionLog: mission?.logPath });
     const payload = { prompt, maxTurns: msg.maxTurns };
     const args = buildClaudeArgs(payload);
     send(ws, { type: 'status', status: 'thinking', command: `claude ${args.map(a => a.includes(' ') ? JSON.stringify(a) : a).join(' ')}` });
+    await appendMissionLog(mission, `Launching Claude Code at ${new Date().toLocaleString()}\n\n`);
 
     const proc = spawn('claude', args, { cwd: ROOT, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
     running.set(id, proc);
@@ -268,6 +352,7 @@ wss.on('connection', (ws) => {
               if (part.type === 'text' && part.text) {
                 finalText += part.text;
                 send(ws, { type: 'token', text: part.text });
+                appendMissionLog(mission, part.text);
               }
               if (part.type === 'tool_use') send(ws, { type: 'tool', name: part.name, input: part.input });
             }
@@ -276,6 +361,7 @@ wss.on('connection', (ws) => {
             if (delta?.type === 'text_delta' && delta.text) {
               finalText += delta.text;
               send(ws, { type: 'token', text: delta.text });
+              appendMissionLog(mission, delta.text);
             }
             if (event.event?.type) send(ws, { type: 'trace', event: event.event.type });
           } else if (event.type === 'result') {
@@ -287,6 +373,7 @@ wss.on('connection', (ws) => {
         } catch {
           finalText += line + '\n';
           send(ws, { type: 'token', text: line + '\n' });
+          appendMissionLog(mission, line + '\n');
         }
       }
     });
@@ -294,6 +381,7 @@ wss.on('connection', (ws) => {
     proc.stderr.on('data', (chunk) => {
       stderr += chunk.toString();
       send(ws, { type: 'stderr', text: chunk.toString() });
+      appendMissionLog(mission, `\n[stderr] ${chunk.toString()}\n`);
     });
 
     proc.on('close', async (code) => {
@@ -303,6 +391,7 @@ wss.on('connection', (ws) => {
         send(ws, { type: 'trace', event: 'self-correction queued' });
       }
       send(ws, { type: 'done', code, text: finalText.trim(), stderr: stderr.trim() });
+      await appendMissionLog(mission, `\n\n------------------------------------------------------------\nJarvis mission finished with exit code ${code} at ${new Date().toLocaleString()}\n`);
     });
   });
 
