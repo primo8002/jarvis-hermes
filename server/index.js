@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url';
 import si from 'systeminformation';
 import { buildLimitStatus } from './usageLimits.js';
 import { clearClaudeWebUsageCache, fetchClaudeWebUsage, openClaudeUsageWindow } from './claudeWebUsage.js';
+import { detectResearchUrl, runVisibleCoworkResearch, sanitizeResearchQuery } from './coworkAutomation.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -86,6 +87,22 @@ app.post('/api/desktop/open', async (req, res) => {
     res.json({ ok: true, ...result });
   } catch (error) {
     res.status(500).json({ ok: false, error: String(error?.message || error) });
+  }
+});
+
+app.post('/api/cowork/research', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const url = body.url || detectResearchUrl(body.query || body.text || '');
+    const result = await runVisibleCoworkResearch({
+      url,
+      query: sanitizeResearchQuery(body.query || body.text || ''),
+      maxScrolls: body.maxScrolls,
+      dwellMs: body.dwellMs
+    });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ ok: false, source: 'jarvis-cowork-visible-browser', error: String(error?.message || error) });
   }
 });
 
@@ -305,7 +322,8 @@ function buildClaudeArgs(payload) {
 
 function jarvisPrompt(userText, options = {}) {
   const visibleDesktopInstructions = options.visibleDesktop ? `\nVisible desktop mode is ON. Whenever a task benefits from visual confirmation, open real desktop windows/tabs so Svanik can watch you work. Use commands such as:\n- xdg-open "https://example.com" to open websites in the desktop browser.\n- xdg-open /path/to/file or xdg-open /path/to/folder to show files/folders.\n- gnome-terminal -- bash -lc 'command; exec bash' for long-running visible terminal work.\n- Keep destructive or private actions inside localhost/local tools unless explicitly requested.\nA live mission monitor window is tailing this log: ${options.missionLog || 'not available'}. Mention important visible windows you opened.` : `\nVisible desktop mode is OFF. Work normally through CLI/local tools unless the user explicitly asks for GUI windows.`;
-  return `You are Jarvis, Svanik's local voice-first AI assistant running through Claude Code CLI on his computer.\n\nCapabilities expected:\n- Use the computer, filesystem, terminal, code tools, and available web/data tools to complete the user's task.\n- Be autonomous, practical, and concise.\n- For dangerous irreversible actions, verify intent if needed, but otherwise execute tasks end-to-end.\n- Report what you did and any paths, commands, or data sources used.\n- If asked to pull data, fetch current data and summarize with source context.${visibleDesktopInstructions}\n\nSession switches:\n- selfCorrection=${options.selfCorrection ? 'enabled' : 'disabled'}\n- visibleDesktop=${options.visibleDesktop ? 'enabled' : 'disabled'}\n- spokenMode=true\n\nUser command:\n${userText}`;
+  const coworkInstructions = options.visibleDesktop ? `\nCowork automation mode is ON. For website research or requests like "go to this site and learn/research it", use the visible browser automation skill FIRST so Svanik can watch you scroll and learn:\n\n  curl -s -X POST http://127.0.0.1:${PORT}/api/cowork/research \\\n    -H 'Content-Type: application/json' \\\n    -d '{"url":"https://example.com","query":"what to research","maxScrolls":7}'\n\nThis opens a real desktop Brave window, scrolls the page visibly, extracts page text/headings/links, and returns a research summary. Use the returned summary as source context before answering. If the user gives only a website inside natural language, extract the URL/domain and pass it as url. Mention that Cowork browser automation was used.` : '';
+  return `You are Jarvis, Svanik's local voice-first AI assistant running through Claude Code CLI on his computer.\n\nCapabilities expected:\n- Use the computer, filesystem, terminal, code tools, and available web/data tools to complete the user's task.\n- Be autonomous, practical, and concise.\n- For dangerous irreversible actions, verify intent if needed, but otherwise execute tasks end-to-end.\n- Report what you did and any paths, commands, or data sources used.\n- If asked to pull data, fetch current data and summarize with source context.${visibleDesktopInstructions}${coworkInstructions}\n\nSession switches:\n- selfCorrection=${options.selfCorrection ? 'enabled' : 'disabled'}\n- visibleDesktop=${options.visibleDesktop ? 'enabled' : 'disabled'}\n- spokenMode=true\n\nUser command:\n${userText}`;
 }
 
 function send(ws, obj) {

@@ -5,6 +5,7 @@ import './style.css';
 const API = window.location.origin;
 const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/assistant`;
 const quickActions = [
+  'Go to anthropic.com and research it visibly with Cowork browser automation',
   'Open my most important unread items and summarize them',
   'Search the web for the latest AI assistant demos and make a comparison table',
   'Inspect this computer and tell me what is using resources',
@@ -192,6 +193,10 @@ function App() {
     rec.start();
   }
 
+  function addTool(name, input) {
+    setTools(t => [{ name, input, at: new Date().toLocaleTimeString() }, ...t].slice(0, 20));
+  }
+
   async function openJarvisWindow() {
     await fetch(`${API}/api/desktop/open`, {
       method: 'POST',
@@ -253,7 +258,7 @@ function App() {
             <div className="small">Realtime polling every 5s · {usage?.source || 'Claude local telemetry'}<br />{usage?.limits?.note}</div>
           </div>
           <h2>Capabilities</h2>
-          <ul className="caps"><li>Voice I/O</li><li>Desktop automation via Claude CLI</li><li>Files, terminal, code, web/data pulls</li><li>Documents, research, app control</li><li>Barge-in and stop</li></ul>
+          <ul className="caps"><li>Voice I/O</li><li>Claude Cowork-style visible browser research</li><li>Desktop automation via Claude CLI</li><li>Files, terminal, code, web/data pulls</li><li>Documents, research, app control</li><li>Barge-in and stop</li></ul>
         </aside>
 
         <section className="center">

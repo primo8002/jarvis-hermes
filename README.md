@@ -12,6 +12,7 @@ Research-informed Jarvis capability set:
 - System telemetry cards: CPU, memory, disk, battery, OS, process uptime.
 - Realtime Claude usage panel updated every 5 seconds from `claude /usage`, direct `https://claude.ai/settings/usage` web percentages, plus local `~/.claude/projects/*.jsonl` token telemetry.
 - Visible Desktop Mode: Jarvis can open real desktop browser tabs/windows, open files/folders, and launch a live mission monitor terminal while Claude works.
+- Claude Cowork-style visible browser automation: when asked to go to a website and research/learn it, Jarvis can open a real Brave window, scroll the page visibly, extract headings/text/links, and feed that research back into Claude.
 - Local-only Express + WebSocket bridge; no cloud app server.
 - Quick action chips for app control, file work, research, coding, data pulls, calendar/email-style instructions, and web tasks.
 - Barge-in: hit Stop or start a new voice command to interrupt an active Claude process.
@@ -66,6 +67,10 @@ Optional:
 - `JARVIS_CLAUDE_USAGE_HEADLESS=true|false` — set `false` to watch the usage browser; click “Refresh Claude.ai usage” if login is needed
 - `JARVIS_VISIBLE_DESKTOP=true|false` — enable visible desktop mission windows by default
 - `JARVIS_DESKTOP_LOG_DIR=~/.jarvis/missions` — live mission monitor log directory
+- `JARVIS_COWORK_BROWSER=/usr/bin/brave-browser` — browser executable for visible Cowork website research
+- `JARVIS_COWORK_BROWSER_PROFILE=~/.jarvis/cowork-browser` — persistent profile for Cowork browsing sessions
+- `JARVIS_COWORK_HEADLESS=true|false` — default `false` so you can watch it scroll
+- `JARVIS_COWORK_KEEP_OPEN=true|false` — keep the browser open after a research pass
 - `JARVIS_CLAUDE_5H_TOKEN_LIMIT=7000000` — estimated 5-hour token budget used when `claude /usage` does not expose an exact percentage
 - `JARVIS_CLAUDE_WEEKLY_TOKEN_LIMIT=70000000` — estimated weekly token budget used when `claude /usage` does not expose an exact percentage
 
@@ -88,6 +93,29 @@ The center controls include a `Visible desktop` toggle. When enabled, every miss
 - `gnome-terminal -- bash -lc 'command; exec bash'` for long-running visible terminal work.
 
 The `Open desktop tab` button calls `/api/desktop/open` and opens the current Jarvis URL in a desktop browser tab/window. The app still binds only to `127.0.0.1`; do not expose it publicly in bypass mode.
+
+## Cowork visible browser automation
+
+Jarvis now has a Claude Cowork-style research skill exposed at:
+
+```text
+POST /api/cowork/research
+```
+
+Example body:
+
+```json
+{"url":"https://anthropic.com","query":"research the company and product positioning","maxScrolls":7}
+```
+
+When Visible desktop mode is on, the Claude prompt instructs Jarvis to use this endpoint first for website research tasks. The endpoint opens a real desktop Brave window, waits on the page, scrolls down in visible increments, captures headings/body text/links, and returns a compact source summary for Claude to use in its final answer. This lets you watch Jarvis navigate and learn instead of only seeing a hidden HTTP fetch.
+
+Use commands like:
+
+```text
+Go to example.com and research it visibly.
+Open stripe.com/pricing, scroll through it, and tell me what you learned.
+```
 
 ## Notes from quick public research
 
