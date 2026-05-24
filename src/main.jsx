@@ -119,6 +119,7 @@ function App() {
     const loadSystem = () => fetch(`${API}/api/system`).then(r => r.json()).then(setSystem).catch(() => {});
     const loadUsage = () => fetch(`${API}/api/claude-usage`).then(r => r.json()).then(setUsage).catch(() => {});
     fetch(`${API}/api/skills`).then(r => r.json()).then(j => setSkills(j.skills || [])).catch(() => {});
+    fetch(`${API}/api/chat/history?limit=200`).then(r => r.json()).then(j => setTranscript(j.messages || [])).catch(() => {});
     loadSystem();
     loadUsage();
     const sysInt = setInterval(loadSystem, 3000);
@@ -212,6 +213,13 @@ function App() {
     if (result.summary || result.error) setTranscript(t => [...t, { role: 'jarvis', text: `${name}: ${result.summary || result.error}` }]);
   }
 
+  async function clearChat() {
+    await fetch(`${API}/api/chat/history`, { method: 'DELETE' }).catch(() => {});
+    setTranscript([]);
+    setTokens('');
+    addTool('memory', 'Cleared persisted Jarvis chat history');
+  }
+
   async function openJarvisWindow() {
     await fetch(`${API}/api/desktop/open`, {
       method: 'POST',
@@ -303,7 +311,9 @@ function App() {
 
       <section className="console" ref={outputRef}>
         <h2>Live mission transcript</h2>
-        {transcript.slice(-8).map((m, i) => <p key={i} className={m.role}><b>{m.role === 'you' ? 'Svanik' : 'Jarvis'}:</b> {m.text}</p>)}
+        <button className="miniAction" onClick={clearChat}>Clear saved chat</button>
+        <div className="small">Saved across refreshes in ~/.jarvis/memory/chat-history.jsonl</div>
+        {transcript.slice(-8).map((m, i) => <p key={m.id || i} className={m.role}><b>{m.role === 'you' ? 'Svanik' : 'Jarvis'}:</b> {m.text}</p>)}
         <pre>{lastLines}</pre>
       </section>
     </section>

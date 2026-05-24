@@ -20,17 +20,42 @@ function normalizeUsageText(text = '') {
 function percentAfterLabel(text, labels) {
   const raw = normalizeUsageText(text);
   for (const label of labels) {
-    const pattern = new RegExp(`${label}[\\s\\S]{0,220}?(\\d+(?:\\.\\d+)?)\\s*%`, 'i');
+    const pattern = new RegExp(`${label}[\\s\\S]{0,260}?(\\d+(?:\\.\\d+)?)\\s*%`, 'i');
     const match = raw.match(pattern);
     if (match) return clampPercent(Number(match[1]));
   }
   return null;
 }
 
+function fractionAfterLabel(text, labels) {
+  const raw = normalizeUsageText(text);
+  for (const label of labels) {
+    const pattern = new RegExp(`${label}[\\s\\S]{0,260}?(\\d+(?:\\.\\d+)?)\\s*(?:of|/)\\s*(\\d+(?:\\.\\d+)?)`, 'i');
+    const match = raw.match(pattern);
+    if (match && Number(match[2]) > 0) return clampPercent((Number(match[1]) / Number(match[2])) * 100);
+  }
+  return null;
+}
+
+function ariaProgressAfterLabel(text, labels) {
+  const raw = String(text || '');
+  for (const label of labels) {
+    const attrPattern = new RegExp(`(?:aria-label|aria-labelledby|title)=["'][^"']*${label}[^"']*["'][\\s\\S]{0,220}?aria-valuenow=["'](\\d+(?:\\.\\d+)?)["']`, 'i');
+    const attrMatch = raw.match(attrPattern);
+    if (attrMatch) return clampPercent(Number(attrMatch[1]));
+    const nearPattern = new RegExp(`${label}[\\s\\S]{0,360}?role=["']progressbar["'][\\s\\S]{0,220}?aria-valuenow=["'](\\d+(?:\\.\\d+)?)["']`, 'i');
+    const nearMatch = raw.match(nearPattern);
+    if (nearMatch) return clampPercent(Number(nearMatch[1]));
+  }
+  return null;
+}
+
 export function parseUsagePercentages(text = '') {
+  const fiveLabels = ['(?:5|five)[-\\s]?hour', 'session usage', 'session limit', 'usage session'];
+  const weeklyLabels = ['weekly usage', 'weekly limit', '\\bweekly\\b', '\\bweek\\b', '7[-\\s]?day'];
   return {
-    fiveHourPercent: percentAfterLabel(text, ['(?:5|five)[-\\s]?hour', 'session usage', 'session limit', 'usage session']),
-    weeklyPercent: percentAfterLabel(text, ['weekly usage', 'weekly limit', '\\bweek\\b', '7[-\\s]?day'])
+    fiveHourPercent: percentAfterLabel(text, fiveLabels) ?? fractionAfterLabel(text, fiveLabels) ?? ariaProgressAfterLabel(text, fiveLabels),
+    weeklyPercent: percentAfterLabel(text, weeklyLabels) ?? fractionAfterLabel(text, weeklyLabels) ?? ariaProgressAfterLabel(text, weeklyLabels)
   };
 }
 

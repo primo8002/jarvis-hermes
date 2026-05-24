@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { parseClaudeUsageWebText } from '../server/usageLimits.js';
 import { clearClaudeWebUsageCache, openClaudeUsageWindow } from '../server/claudeWebUsage.js';
 
 process.env.JARVIS_CLAUDE_USAGE_OPENER = '/bin/true';
@@ -21,5 +22,24 @@ assert.ok(isolated.args.includes('https://claude.ai/settings/usage'));
 const second = await openClaudeUsageWindow({ force: false });
 assert.equal(second.ok, true);
 assert.equal(second.skipped, true);
+
+const currentClaudeMarkup = parseClaudeUsageWebText(`
+Claude
+Settings
+Usage
+5-hour limit
+Resets at 6:00 PM
+<div role="progressbar" aria-label="5-hour usage" aria-valuenow="31" aria-valuemin="0" aria-valuemax="100"></div>
+Weekly limit
+Resets Monday
+<div role="progressbar" aria-label="Weekly usage" aria-valuenow="64" aria-valuemin="0" aria-valuemax="100"></div>
+`);
+assert.equal(currentClaudeMarkup.ok, true);
+assert.equal(currentClaudeMarkup.fiveHourPercent, 31);
+assert.equal(currentClaudeMarkup.weeklyPercent, 64);
+
+const compactClaudeText = parseClaudeUsageWebText('Usage 5-hour 12 of 100 Weekly 48 of 100');
+assert.equal(compactClaudeText.fiveHourPercent, 12);
+assert.equal(compactClaudeText.weeklyPercent, 48);
 
 console.log('claude web usage tests passed');

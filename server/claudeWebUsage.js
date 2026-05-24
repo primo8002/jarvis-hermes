@@ -66,7 +66,22 @@ export async function fetchClaudeWebUsage({ force = false, openLogin = false } =
     await page.goto(CLAUDE_USAGE_URL, { waitUntil: 'networkidle2', timeout: 45_000 });
     await page.waitForFunction(() => document.body && document.body.innerText.length > 40, { timeout: 15_000 }).catch(() => {});
     await new Promise(resolve => setTimeout(resolve, 2500));
-    const text = await page.evaluate(() => document.body?.innerText || '');
+    const text = await page.evaluate(() => {
+      const visible = document.body?.innerText || '';
+      const progress = Array.from(document.querySelectorAll('[role="progressbar"], progress, [aria-valuenow]')).map((el) => {
+        const attrs = ['aria-label', 'aria-labelledby', 'title', 'aria-valuenow', 'aria-valuemin', 'aria-valuemax', 'value', 'max']
+          .map(name => `${name}=${JSON.stringify(el.getAttribute(name) || '')}`).join(' ');
+        const style = el.getAttribute('style') || '';
+        const text = el.textContent || '';
+        return `<progress ${attrs} style=${JSON.stringify(style)}>${text}</progress>`;
+      }).join('\n');
+      const labelled = Array.from(document.querySelectorAll('[aria-label], [title]')).slice(0, 200).map(el => {
+        const label = el.getAttribute('aria-label') || el.getAttribute('title') || '';
+        const value = el.getAttribute('aria-valuenow') || el.getAttribute('value') || '';
+        return `${label} ${value} ${el.textContent || ''}`.trim();
+      }).join('\n');
+      return [visible, progress, labelled, document.body?.innerHTML?.slice(0, 8000) || ''].filter(Boolean).join('\n');
+    });
     const parsed = parseClaudeUsageWebText(text);
     const loginRequired = /continue with google|continue with email|continue with sso|log in|sign in/i.test(text) && !/weekly usage|session usage|weekly limit|5[-\s]?hour limit/i.test(text);
     const data = {

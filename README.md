@@ -19,6 +19,7 @@ Research-informed Jarvis capability set:
 - Self-correction mode: Jarvis automatically asks Claude to verify/fix its previous answer after a task.
 - Data pull mode: commands can ask Claude to search/fetch/process data using its available web/tools.
 - Agentskills-compatible skill library under `./skills/<name>/SKILL.md` with 41 adjusted Jarvis skills, a cockpit skill shelf, REST skill runner, and `npm run jarvis -- run <skill> -- <args>`.
+- Persisted chat history: the live transcript reloads after page refresh from `~/.jarvis/memory/chat-history.jsonl`.
 
 ## Install and run
 
@@ -72,6 +73,7 @@ Optional:
 - `JARVIS_COWORK_BROWSER_PROFILE=~/.jarvis/cowork-browser` — persistent profile for Cowork browsing sessions
 - `JARVIS_COWORK_HEADLESS=true|false` — default `false` so you can watch it scroll
 - `JARVIS_COWORK_KEEP_OPEN=true|false` — keep the browser open after a research pass
+- `JARVIS_CHAT_HISTORY_FILE=~/.jarvis/memory/chat-history.jsonl` — persisted cockpit transcript loaded after browser refresh
 - `JARVIS_CLAUDE_5H_TOKEN_LIMIT=7000000` — estimated 5-hour token budget used when `claude /usage` does not expose an exact percentage
 - `JARVIS_CLAUDE_WEEKLY_TOKEN_LIMIT=70000000` — estimated weekly token budget used when `claude /usage` does not expose an exact percentage
 
@@ -83,7 +85,7 @@ Jarvis shows a live Claude Usage module in the left rail. It refreshes every 5 s
 2. `claude /usage` for the official subscription/usage status text Claude exposes locally.
 3. Local Claude Code transcript files under `~/.claude/projects/**/*.jsonl` for token telemetry, model breakdowns, recent activity, today/7-day/30-day/all-time totals, and estimated dollar cost.
 
-The transcript-derived cost is an estimate because Claude subscription quota details are not fully exposed as a stable public API by the CLI. The token counts come from Claude Code's own recorded `message.usage` fields. Limit percentages prefer the direct claude.ai settings page. If the Jarvis usage browser profile is not logged in, the panel shows `login needed`; click `Refresh Claude.ai usage` to immediately open `https://claude.ai/settings/usage` in your normal desktop browser and trigger a direct refresh attempt. If the web page is unavailable, Jarvis falls back to `claude /usage` text and then estimated token budgets.
+The transcript-derived cost is an estimate because Claude subscription quota details are not fully exposed as a stable public API by the CLI. The token counts come from Claude Code's own recorded `message.usage` fields. Limit percentages prefer the direct claude.ai settings page. If the Jarvis usage browser profile is not logged in, the panel shows `login needed`; click `Refresh Claude.ai usage` to open `https://claude.ai/settings/usage` in the same persistent Jarvis browser profile that the scraper uses, sign in once, then click refresh again after the page is available. The scraper now reads visible text plus progressbar/ARIA values because Claude's usage page often renders percentages as accessibility attributes instead of plain text. If the web page is unavailable, Jarvis falls back to `claude /usage` text and then estimated token budgets.
 
 ## Visible Desktop Mode
 

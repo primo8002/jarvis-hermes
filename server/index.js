@@ -12,6 +12,7 @@ import { clearClaudeWebUsageCache, fetchClaudeWebUsage, openClaudeUsageWindow } 
 import { detectResearchUrl, runVisibleCoworkResearch, sanitizeResearchQuery } from './coworkAutomation.js';
 
 import { listSkills, runSkill, ensureSkillLibrary } from './skills.js';
+import { appendChatMessage, chatHistoryPath, clearChatHistory, loadChatHistory } from './chatHistory.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -94,6 +95,31 @@ app.post('/api/desktop/open', async (req, res) => {
   }
 });
 
+app.get('/api/chat/history', async (req, res) => {
+  try {
+    res.json({ ok: true, path: chatHistoryPath(), messages: await loadChatHistory({ limit: Number(req.query.limit || 200) }) });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: String(error?.message || error) });
+  }
+});
+
+app.post('/api/chat/history', async (req, res) => {
+  try {
+    const result = await appendChatMessage(req.body || {});
+    res.status(result.ok ? 200 : 400).json(result);
+  } catch (error) {
+    res.status(500).json({ ok: false, error: String(error?.message || error) });
+  }
+});
+
+app.delete('/api/chat/history', async (_req, res) => {
+  try {
+    res.json(await clearChatHistory());
+  } catch (error) {
+    res.status(500).json({ ok: false, error: String(error?.message || error) });
+  }
+});
+
 app.get('/api/skills', async (_req, res) => {
   try {
     res.json({ ok: true, skills: await listSkills({ root: ROOT }) });
@@ -132,11 +158,14 @@ app.post('/api/claude-usage/refresh-web', async (_req, res) => {
     usageCache = { at: 0, data: null };
     clearClaudeWebUsageCache();
     let usage = { ok: false, source: 'claude-ai-settings-usage', loginRequired: true, url: 'https://claude.ai/settings/usage' };
-    let openAttempt = await openClaudeUsageWindow({ force: true });
+    let openAttempt = null;
     try {
       usage = await fetchClaudeWebUsage({ force: true, openLogin: false });
     } catch (error) {
       usage = { ...usage, error: String(error?.message || error) };
+    }
+    if (!usage.ok || usage.loginRequired) {
+      openAttempt = await openClaudeUsageWindow({ force: true, isolatedProfile: true });
     }
     res.json({ ...usage, openAttempt });
   } catch (error) {
@@ -375,6 +404,7 @@ wss.on('connection', (ws) => {
     if (existing) existing.kill('SIGTERM');
 
     const visibleDesktop = msg.options?.visibleDesktop ?? DEFAULT_VISIBLE_DESKTOP;
+    await appendChatMessage({ role: 'you', text: msg.text || '' }).catch(() => {});
     let mission = null;
     if (visibleDesktop) {
       try {
@@ -450,7 +480,9 @@ wss.on('connection', (ws) => {
       if (msg.options?.selfCorrection && code === 0 && finalText.trim()) {
         send(ws, { type: 'trace', event: 'self-correction queued' });
       }
-      send(ws, { type: 'done', code, text: finalText.trim(), stderr: stderr.trim() });
+      const final = finalText.trim();
+      if (final) await appendChatMessage({ role: 'jarvis', text: final }).catch(() => {});
+      send(ws, { type: 'done', code, text: final, stderr: stderr.trim() });
       await appendMissionLog(mission, `\n\n------------------------------------------------------------\nJarvis mission finished with exit code ${code} at ${new Date().toLocaleString()}\n`);
     });
   });
